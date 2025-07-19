@@ -51,8 +51,10 @@ function _parse_interface_body(body_expr)
     
     requirements = []
     for item in filter(x -> !(x isa LineNumberNode), body_expr.args)
-        # @impls Parent{T, U} - Stored as a raw macro call
-        if item isa Expr && item.head == :macrocall && item.args[1] == Symbol("@impls")
+        if item isa Expr && item.head == :macrocall
+            item.args = filter(x -> !(x isa LineNumberNode), item.args)
+        end
+        if item isa Expr && item.head == :macrocall && item.args[1] == Symbol("@impls") && length(item.args) == 3 # macro, types and interface
             push!(requirements, (type=:compose, expr=item))
         # Typed field: T.field::Type
         elseif item isa Expr && item.head == :(::) && item.args[1] isa Expr && item.args[1].head == :.
@@ -109,6 +111,19 @@ function check_interface(__module__::Module, interface_key::Symbol, concrete_typ
     # Now, iterate through all requirements
     for req in def.requirements
         try
+            if req.type == :compose
+                # This is an inheritance requirement, parse and check it now.
+                type_exprs = req.expr.args[2]
+                interface_expr_dep = req.expr.args[3]
+                interface_type_dep = Core.eval(__module__, interface_expr_dep)
+                interface_key_dep = get_interface_key(interface_type_dep)
+                concrete_type_exprs = substitute(type_exprs)
+                concrete_type_exprs = concrete_type_exprs isa Expr && concrete_type_exprs.head == :tuple ? concrete_type_exprs.args : [concrete_type_exprs]
+                failure_message = check_interface(__module__, interface_key_dep, concrete_type_exprs)
+                if !isnothing(failure_message)
+                    return "In requirement `$(req.expr)`: $failure_message"
+                end
+            end
             if req.type == :field_typed
                 concrete_type = Core.eval(__module__, substitute(req.expr.args[1].args[1]))
                 field_name = req.expr.args[1].args[2].value

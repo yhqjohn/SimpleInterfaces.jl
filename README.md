@@ -5,9 +5,7 @@ A lightweight, non-intrusive interface system for Julia, born from a deep reflec
 ---
 ## Development Status (Current Work)
 
-This package is currently under active development. The core functionality is stable, but some advanced features are still being worked on.
-
-- **Interface Inheritance & Composition**: This feature is under active development, using a new `@impls` syntax for explicit, clear, and robust interface combination.
+This package is currently under active development. The core functionality is stable, and the first stage goals are met. 
 
 ---
 
@@ -95,7 +93,7 @@ We can define a new interface, `CanFooBar`, that requires a type to satisfy both
 
     # This says: "The third parameter (K) of CanFooBar
     # must implement CanBar."
-    @impls K CanBar
+    @impls I CanBar
 
     # CanFooBar can also add its own requirements.
     function baz(::I, ::K)::Int end

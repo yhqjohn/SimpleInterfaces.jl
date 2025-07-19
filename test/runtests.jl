@@ -163,3 +163,62 @@ end
         @test_throws InterfaceImplementationError @assertimpls ModuleB.FulfillsA ModuleB.MyInterface
     end
 end
+
+
+# 1. Define parent interfaces
+@interface CanFoo X, Y begin
+    function foo(::X, ::Y)::Bool end
+end
+
+@interface CanBar Z begin
+    function bar(::Z)::String end
+end
+
+# 2. Define a composite interface
+@interface CanFooBar I, J, K begin
+    @impls I, J CanFoo
+    @impls I CanBar
+    function baz(::I, ::K)::Int end
+end
+
+# 3. Define a type that fully implements the composite interface
+struct FullImpl
+end
+foo(::FullImpl, ::Int) = true
+bar(::FullImpl) = "hello"
+baz(::FullImpl, ::String) = 42
+
+# 4. Define types with partial implementations for failure testing
+struct NoBaz end
+foo(::NoBaz, ::Any) = true
+bar(::NoBaz) = "hello"
+
+struct NoBar end
+foo(::NoBar, ::Any) = true
+baz(::NoBar, ::Any) = 0
+
+@interface CanFooWithInt J begin
+    @impls J, Int CanFoo
+end
+
+struct FooWithIntImpl end
+foo(::FooWithIntImpl, ::Int) = true # Correctly implements foo(::MyType, ::Int)
+
+struct BadFooWithIntImpl end
+foo(::BadFooWithIntImpl, ::String) = false # Does not implement for Int
+
+@testset "Interface Inheritance (@impls)" begin
+    # This should pass, as FullImpl satisfies CanFoo (via FullImpl, Int),
+    # CanBar (via FullImpl), and CanFooBar's own `baz` requirement.
+    @test @assertimpls FullImpl, Int, String CanFooBar
+
+    # This should fail because NoBaz is missing the `baz` method from CanFooBar.
+    @test_throws InterfaceImplementationError @assertimpls NoBaz, Int, String CanFooBar
+
+    # This should fail because NoBar is missing the `bar` method from the parent CanBar.
+    @test_throws InterfaceImplementationError @assertimpls NoBar, Int, String CanFooBar
+
+    @test @assertimpls FooWithIntImpl CanFooWithInt
+    @test_throws InterfaceImplementationError @assertimpls BadFooWithIntImpl CanFooWithInt
+
+end
