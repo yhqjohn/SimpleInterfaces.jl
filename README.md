@@ -2,6 +2,21 @@
 
 A lightweight, non-intrusive interface system for Julia, born from a deep reflection on the language's core principles.
 
+---
+## Development Status (Current Work)
+
+This package is currently under active development. The core functionality is stable, but some advanced features are still being worked on.
+
+#### Completed & Stable:
+- **Core Functionality**: Compile-time checking of fields and methods.
+- **Runtime Metaprogramming**: Generation of abstract types for interfaces (e.g., `abstract type MyInterface{T} end`) and a runtime check function (`impls`).
+
+#### Work in Progress / Known Issues:
+- **Keyword Argument (kwargs) Support**: Implementation is currently blocked by a persistent `UndefVarError` in the test environment, likely related to macro expansion and evaluation scopes. This feature is temporarily disabled.
+- **Interface Inheritance**: The implementation of interface inheritance (`@interface B <: A`) has proven to be highly complex due to the intricacies of recursive type-parameter substitution in Julia's metaprogramming system. This feature is not yet available.
+
+---
+
 ## Philosophy & Design
 
 Our core philosophy is that an interface is a **compile-time verifiable contract** on a **set of types**. This approach avoids the pitfalls of OOP-style inheritance in a multiple-dispatch world and embraces Julia's dynamic nature without sacrificing runtime performance. The key principles are:
@@ -80,17 +95,19 @@ Attempting to automatically "solve" for any possible subtype `I` is not practica
 **Conclusion**: For flexibility in a parameter, make it an explicit type parameter of the interface.
 
 ---
-## DSL Syntax Specification                                                            
-                                                                                    
-The body of an `@interface` macro supports the following requirement definitions:      
+## DSL Syntax Specification
+
+The body of an `@interface` macro supports the following requirement definitions:
+
 ```julia
-@interface InterfaceName TypeDeclarations... begin
+@interface InterfaceName [<: {SuperInterface, ...}] TypeDeclarations... begin
     fieldDeclarations
     methodDeclarations
 end
 ```
 where:
 - `InterfaceName` is the name of the interface, a valid Julia identifier.
+- `SuperInterface` (Optional) is a super-interface declaration in the format `SuperInterfaceName{TypeParams...}`. Multiple super-interfaces can be provided in a tuple, e.g., `{Super1{T}, Super2{E}}`. The current interface will inherit all requirements from its super-interfaces.
 - `TypeDeclarations := TypeName [<: SuperType]`
   - `TypeName` is a valid Julia type name.
   - `SuperType` is an optional valid supertype that the type must inherit from.
@@ -99,7 +116,18 @@ where:
     - `TypeName` is a type declared in `TypeDeclarations`.
     - `fieldName` is a valid Julia identifier.
     - `FieldType`(Optioanl) either a valid Julia type or a type parameter declared in `TypeDeclarations`.
-- `methodDeclarations` can be several valid Julia method definition that start with `function` and has no body.
+- `methodDeclarations` can be several valid Julia method definition that start with `function` and has no body. **Keyword arguments** in method signatures are checked for existence by name, but not by type, consistent with `hasmethod`.
+
+---
+## Runtime Utilities and Abstract Types
+
+To bridge the gap between compile-time checks and runtime polymorphism, `SimpleInterfaces.jl` will provide:
+
+1.  **Abstract Supertype**: A new abstract type, `abstract type SimpleInterface end`, is available and exported.
+2.  **Generated Interface Types**: For each `@interface Foo T`, a corresponding `abstract type Foo{T} <: SimpleInterface end` is automatically generated and can be used for dispatch.
+3.  **Runtime Check Function**: A function `impls(MyType, :MyInterface)` is available for dynamic, runtime verification. *Note: This will have a runtime cost.*
+
+These features will allow for more idiomatic Julia dispatch patterns, e.g., `function my_func(obj::MyInterface)`.
 
 ---
 ## A Note on Return Type Inference
