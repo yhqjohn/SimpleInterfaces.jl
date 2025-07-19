@@ -7,13 +7,7 @@ A lightweight, non-intrusive interface system for Julia, born from a deep reflec
 
 This package is currently under active development. The core functionality is stable, but some advanced features are still being worked on.
 
-#### Completed & Stable:
-- **Core Functionality**: Compile-time checking of fields and methods.
-- **Runtime Metaprogramming**: Generation of abstract types for interfaces (e.g., `abstract type MyInterface{T} end`) and a runtime check function (`impls`).
-
-#### Work in Progress / Known Issues:
-- **Keyword Argument (kwargs) Support**: Implementation is currently blocked by a persistent `UndefVarError` in the test environment, likely related to macro expansion and evaluation scopes. This feature is temporarily disabled.
-- **Interface Inheritance**: The implementation of interface inheritance (`@interface B <: A`) has proven to be highly complex due to the intricacies of recursive type-parameter substitution in Julia's metaprogramming system. This feature is not yet available.
+- **Interface Inheritance & Composition**: This feature is under active development, using a new `@impls` syntax for explicit, clear, and robust interface combination.
 
 ---
 
@@ -75,6 +69,57 @@ Base.getindex(c::MyCollection{T}, i::Int)::T where {T} = c.data[i]
 ```
 
 ---
+## Interface Inheritance & Composition: The `@impls` Macro
+
+A powerful feature of `SimpleInterfaces.jl` is the ability to compose new interfaces from existing ones. Our design for this is explicit and unambiguous, using an `@impls` macro inside an interface definition. This approach avoids the semantic confusion that could arise from mimicking Julia's type inheritance (`<:`), clearly separating the concept of a "compile-time contract" from "type hierarchy."
+
+### Defining a Composite Interface
+
+Let's say we have two simple interfaces, `CanFoo` and `CanBar`:
+```julia
+@interface CanFoo X, Y begin
+    function foo(::X, ::Y)::Bool end
+end
+
+@interface CanBar Z begin
+    function bar(::Z)::String end
+end
+```
+
+We can define a new interface, `CanFooBar`, that requires a type to satisfy both.
+```julia
+@interface CanFooBar I, J, K begin
+    # This says: "The first two parameters (I, J) of CanFooBar
+    # must implement CanFoo."
+    @impls I, J CanFoo
+
+    # This says: "The third parameter (K) of CanFooBar
+    # must implement CanBar."
+    @impls K CanBar
+
+    # CanFooBar can also add its own requirements.
+    function baz(::I, ::K)::Int end
+end
+```
+The `@impls` macro maps the parameters of the child interface to the required parent interface. The mapping is positional: `I` maps to `CanFoo`'s `X`, and `J` maps to `Y`.
+
+You can also map type constants:
+```julia
+@interface CanFooWithInt J begin
+    # This requires that J and the concrete type `Int` implement `CanFoo`.
+    @impls J, Int CanFoo
+end
+```
+
+### Checking a Composite Interface
+
+Checking an implementation is straightforward. The following will recursively check all requirements from `CanFoo` and `CanBar`, plus the new requirements from `CanFooBar` itself.
+```julia
+@assertimpls MyType, YourType, TheirType CanFooBar
+```
+The system ensures that if there's a failure, the earliest error in the inheritance chain is reported, helping you pinpoint the root cause quickly.
+
+---
 
 ## Advanced Topic: Covariance and Contravariance
 
@@ -100,14 +145,17 @@ Attempting to automatically "solve" for any possible subtype `I` is not practica
 The body of an `@interface` macro supports the following requirement definitions:
 
 ```julia
-@interface InterfaceName [<: {SuperInterface, ...}] TypeDeclarations... begin
+@interface InterfaceName TypeDeclarations... begin
+    # Composition of other interfaces
+    @impls TypeParams... ParentInterfaceName
+
+    # Field and method requirements
     fieldDeclarations
     methodDeclarations
 end
 ```
 where:
 - `InterfaceName` is the name of the interface, a valid Julia identifier.
-- `SuperInterface` (Optional) is a super-interface declaration in the format `SuperInterfaceName{TypeParams...}`. Multiple super-interfaces can be provided in a tuple, e.g., `{Super1{T}, Super2{E}}`. The current interface will inherit all requirements from its super-interfaces.
 - `TypeDeclarations := TypeName [<: SuperType]`
   - `TypeName` is a valid Julia type name.
   - `SuperType` is an optional valid supertype that the type must inherit from.
@@ -115,8 +163,21 @@ where:
   - `TypeName.fieldName[::FieldType]` to specify a field with a type. where:
     - `TypeName` is a type declared in `TypeDeclarations`.
     - `fieldName` is a valid Julia identifier.
-    - `FieldType`(Optioanl) either a valid Julia type or a type parameter declared in `TypeDeclarations`.
-- `methodDeclarations` can be several valid Julia method definition that start with `function` and has no body. **Keyword arguments** in method signatures are checked for existence by name, but not by type, consistent with `hasmethod`.
+    - `FieldType`(Optional) either a valid Julia type or a type parameter declared in `TypeDeclarations`. **If `FieldType` is omitted, it defaults to `Any`.**
+- `methodDeclarations` can be several valid Julia method definition that start with `function` and has no body. **Keyword arguments** in method signatures are checked for existence by name, but not by type, consistent with `hasmethod`. **If a parameter type is omitted, it defaults to `Any`.**
+
+---
+## Keyword Arguments: A Note on Dispatch
+
+A crucial design decision in this library is how to handle keyword arguments (kwargs). Our philosophy is to align with Julia's own method dispatch system, not to create a new, stricter one.
+
+In Julia, `hasmethod` checks if a method exists that can be *called* with a given set of arguments. For kwargs, this has a specific consequence: a method is considered implemented even if some of its non-defaulted kwargs are not provided in the call. Julia only raises a runtime `UndefKeywordError` when the method is actually executed, not during method lookup.
+
+For example, if an interface requires `f(x; mandatory_kw)`, an implementation `f(x; mandatory_kw, optional_kw=1)` is considered valid by `hasmethod`, and therefore by `SimpleInterfaces.jl`. Likewise, an implementation `f(x)` is considered to satisfy a requirement for `f(x; optional_kw=1)`.
+
+**Our Guarantee**: We verify that a method signature *exists* according to Julia's dispatch rules. We do not (and cannot reliably) perform static analysis to prevent potential runtime `UndefKeywordError` or `TypeError` from misuse of kwargs.
+
+**Recommendation**: Due to this inherent limitation in Julia's dispatch system, we advise against using keyword arguments for critical type contracts. For strict type enforcement, prefer positional arguments.
 
 ---
 ## Runtime Utilities and Abstract Types

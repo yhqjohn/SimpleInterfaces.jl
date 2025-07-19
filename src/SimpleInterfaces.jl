@@ -51,8 +51,11 @@ function _parse_interface_body(body_expr)
     
     requirements = []
     for item in filter(x -> !(x isa LineNumberNode), body_expr.args)
+        # @impls Parent{T, U} - Stored as a raw macro call
+        if item isa Expr && item.head == :macrocall && item.args[1] == Symbol("@impls")
+            push!(requirements, (type=:compose, expr=item))
         # Typed field: T.field::Type
-        if item isa Expr && item.head == :(::) && item.args[1] isa Expr && item.args[1].head == :.
+        elseif item isa Expr && item.head == :(::) && item.args[1] isa Expr && item.args[1].head == :.
             push!(requirements, (type=:field_typed, expr=item))
         # Untyped field: T.field
         elseif item isa Expr && item.head == :.
@@ -78,12 +81,15 @@ function check_interface(__module__::Module, interface_key::Symbol, concrete_typ
     end
     def = INTERFACES[interface_key]
     
+    # Create the substitution map once
     type_vars = def.type_vars
     if length(type_vars) != length(concrete_type_exprs)
-        return "Incorrect number of types for interface `$interface_name`. Expected $(length(type_vars)), got $(length(concrete_type_exprs))."
+        return "Incorrect number of types for interface `$(def.name)`. Expected $(length(type_vars)), got $(length(concrete_type_exprs))."
     end
 
     type_map = Dict(zip(type_vars, concrete_type_exprs))
+    
+    # Define substitution functions
     substitute(e) = e
     substitute(e::Symbol) = get(type_map, e, e)
     substitute(e::QuoteNode) = e # Do not change QuoteNodes
@@ -92,6 +98,7 @@ function check_interface(__module__::Module, interface_key::Symbol, concrete_typ
         return Expr(e.head, [arg isa QuoteNode ? arg : substitute(arg) for arg in e.args]...)
     end
 
+    # First, check this interface's own type constraints
     for constraint in def.type_constraints
         is_subtype = Core.eval(__module__, substitute(constraint))
         if !is_subtype
@@ -99,6 +106,7 @@ function check_interface(__module__::Module, interface_key::Symbol, concrete_typ
         end
     end
 
+    # Now, iterate through all requirements
     for req in def.requirements
         try
             if req.type == :field_typed
@@ -130,7 +138,7 @@ function check_interface(__module__::Module, interface_key::Symbol, concrete_typ
                 if keyword_index !== nothing
                     keyword_params = substituted_call.args[keyword_index].args
                     keyword_names = [
-                        if e isa Expr || a.head == :(::)
+                        if e isa Expr && e.head == :(::)
                             e.args[1]
                         elseif e isa Symbol
                             e
@@ -183,7 +191,6 @@ function impls(concrete_types_and_interface...)
     return isnothing(failure_message)
 end
 
-
 # --- Macros ---
 
 macro interface(name_expr, params_expr, body_expr)
@@ -198,7 +205,7 @@ macro interface(name_expr, params_expr, body_expr)
         __module__ = __module__, # Store the defining module
         type_vars = type_vars,
         type_constraints = type_constraints,
-        requirements = requirements
+        requirements = requirements # Store all requirements
     )
     
     INTERFACES[unique_key] = interface_obj
@@ -220,11 +227,16 @@ macro interface(name_expr, params_expr, body_expr)
     end
 end
 
-macro impls(impl_args...)
+macro impls(types_expr, interface_expr)
     # This check happens at COMPILE TIME.
-    interface_expr = impl_args[end]
-    concrete_type_exprs = impl_args[1:end-1]
     
+    local concrete_type_exprs
+    if types_expr isa Expr && types_expr.head == :tuple
+        concrete_type_exprs = types_expr.args
+    else
+        concrete_type_exprs = [types_expr] # It's a single expression
+    end
+
     try
         interface_type = Core.eval(__module__, interface_expr)
         interface_key = get_interface_key(interface_type)
@@ -240,10 +252,15 @@ macro impls(impl_args...)
     end
 end
 
-macro assertimpls(impl_args...)
+macro assertimpls(types_expr, interface_expr)
     # This check happens at COMPILE TIME.
-    interface_expr = impl_args[end]
-    concrete_type_exprs = impl_args[1:end-1]
+
+    local concrete_type_exprs
+    if types_expr isa Expr && types_expr.head == :tuple
+        concrete_type_exprs = types_expr.args
+    else
+        concrete_type_exprs = [types_expr] # It's a single expression
+    end
 
     try
         interface_type = Core.eval(__module__, interface_expr)
@@ -253,18 +270,17 @@ macro assertimpls(impl_args...)
         concrete_types = [Core.eval(__module__, expr) for expr in concrete_type_exprs]
 
         failure_message = check_interface(interface_def_module, interface_key, concrete_types)
-        
-        if isnothing(failure_message)
-            return true # Success, inject `true`
-        else
-            # Failure, inject a `throw` expression
-            return :(throw(InterfaceImplementationError($(QuoteNode(interface_name_for_error)), ($(esc.(concrete_type_exprs)...),), $failure_message)))
+
+        if !isnothing(failure_message)
+            return :(throw(InterfaceImplementationError($(QuoteNode(interface_name_for_error)), ($([esc(e) for e in concrete_type_exprs]...),), $failure_message)))
         end
     catch e
         # For user errors (like UndefVarError), rethrow them after a warning.
         @warn "SimpleInterfaces.jl: A compile-time check in `@assertimpls` failed. This is likely due to a user error (e.g., a typo or undefined type). See the original error below."
         rethrow(e)
     end
+
+    return true
 end
 
 end # module

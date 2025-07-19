@@ -100,7 +100,7 @@ end
     @testset "Successful Implementation" begin
         # This demonstrates covariance for fields (Vector <: AbstractArray)
         # and return types (Int <: Integer).
-        @test @assertimpls GoodCollection{String} String Int ReadableCollection
+        @test @assertimpls GoodCollection{String}, String, Int ReadableCollection # equivalent to @assertimpls (GoodCollection{String}, String, Int) ReadableCollection or @assertimpls((GoodCollection{String}, String, Int), ReadableCollection)
     end
 
     # Helper to robustly test compile-time errors from macros
@@ -110,29 +110,29 @@ end
 
     @testset "Failed Typed Field" begin
         # Fails because data::Vector{Float64} is not a subtype of AbstractArray{String, 1}
-        get_compile_error(:(@assertimpls BadTypedFieldCollection String Int ReadableCollection))
+        get_compile_error(:(@assertimpls BadTypedFieldCollection, String, Int ReadableCollection))
     end
 
     @testset "Failed Untyped Field" begin
         # Fails because it's missing the `metadata` field
-        get_compile_error(:(@assertimpls BadUntypedFieldCollection{Any} Any Int ReadableCollection))
+        get_compile_error(:(@assertimpls BadUntypedFieldCollection{Any}, Any, Int ReadableCollection))
     end
 
     @testset "Failed Return Type" begin
         # Fails because length returns Float64, not <: Integer
-        get_compile_error(:(@assertimpls BadReturnCollection{Any} Any Int ReadableCollection))
+        get_compile_error(:(@assertimpls BadReturnCollection{Any}, Any, Int ReadableCollection))
     end
     
     @testset "Keyword Argument Support" begin
         # This should pass because GoodKwargsCollection has the `default` keyword
-        @test @assertimpls GoodKwargsCollection{String} String Int KwargsInterface
+        @test @assertimpls GoodKwargsCollection{String}, String, Int KwargsInterface
         
         # This should fail because BadKwargsCollection is missing the keyword argument
-        get_compile_error(:(@assertimpls BadKwargsCollection{String} String Int KwargsInterface))
+        get_compile_error(:(@assertimpls BadKwargsCollection{String}, String, Int KwargsInterface))
     end
     
     @testset "Error Message Content" begin
-        err = @test_throws InterfaceImplementationError Core.eval(@__MODULE__, :(@assertimpls BadUntypedFieldCollection{Any} Any Int ReadableCollection))
+        err = @test_throws InterfaceImplementationError Core.eval(@__MODULE__, :(@assertimpls BadUntypedFieldCollection{Any}, Any, Int ReadableCollection))
         
         @test err.value.interface_name == :ReadableCollection
         @test occursin("Field existence requirement failed", err.value.message)
