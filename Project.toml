@@ -1,6 +1,6 @@
 name = "SimpleInterfaces"
 uuid = "5e8a1de0-27a2-4e83-a339-3875953a141a"
-authors = ["Your Name <you@example.com>"]
+authors = ["yhqjohn <25428156+yhqjohn@users.noreply.github.com> and contributors"]
 version = "0.1.0"
 
 [compat]

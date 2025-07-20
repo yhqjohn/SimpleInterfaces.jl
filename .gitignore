@@ -1,0 +1,46 @@
+# julia generated files
+*.jl.cov
+*.jl.mem
+*.jl.info
+
+# documentation build artifacts
+docs/build/
+docs/site/
+
+# environment folders
+.julia/
+Manifest.toml
+
+# other
+*~
+.DS_Store
+/instantiate.log
+
+# editor settings
+.vscode/
+.ionide/
+.idea/
+.project
+.classpath
+.history
+*.sublime-project
+*.sublime-workspace
+.vim/
+.swp
+.swo
+TAGS
+tags
+csproj
+.lock-waf
+*.VC.db
+/build/
+*.pyc
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db 
