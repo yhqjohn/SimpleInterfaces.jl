@@ -7,6 +7,10 @@ A lightweight, non-intrusive interface system for Julia that provides compile-ti
 
 This package is currently under active development. The core functionality is stable, and the first stage goals are met. 
 
+### Future Plans
+
+**Interface Implementation Methods**: We plan to add support for built-in method/function templates within interface definitions. These templates would provide default implementations for type compositions that implement the interface. When `@impls` or `@assertimpls` is called at module top-level, these template methods would be automatically instantiated for the specific type composition, reducing boilerplate code and ensuring consistent implementations across different types.
+
 ---
 
 ## Philosophy & Design
