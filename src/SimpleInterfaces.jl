@@ -1,6 +1,6 @@
 module SimpleInterfaces
 
-export @interface, @impls, @assertimpls, InterfaceImplementationError, SimpleInterface, impls
+export @interface, @impls, @assertimpls, InterfaceImplementationError, SimpleInterface
 
 abstract type SimpleInterface end
 
@@ -184,26 +184,6 @@ function check_interface(__module__::Module, interface_key::Symbol, concrete_typ
     end
     
     return nothing
-end
-
-"""
-    impls(concrete_types..., interface_name::Symbol) -> Bool
-
-Runtime function to check if a set of concrete types implements a given interface.
-This is the runtime equivalent of the `@impls` macro.
-"""
-function impls(concrete_types_and_interface...)
-    if length(concrete_types_and_interface) < 2
-        error("impls function requires at least one concrete type and an interface name")
-    end
-    interface = concrete_types_and_interface[end]
-    interface_key = get_interface_key(interface)
-    concrete_types = concrete_types_and_interface[1:end-1]
-    
-    # The check is performed in the module where the interface was defined
-    interface_module = INTERFACES[interface_key].__module__
-    failure_message = check_interface(interface_module, interface_key, Any[concrete_types...])
-    return isnothing(failure_message)
 end
 
 # --- Macros ---

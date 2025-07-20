@@ -1,6 +1,6 @@
 # SimpleInterfaces.jl
 
-A lightweight, non-intrusive interface system for Julia, born from a deep reflection on the language's core principles.
+A lightweight, non-intrusive interface system for Julia that provides compile-time contract verification for multi-type interactions.
 
 ---
 ## Development Status (Current Work)
@@ -11,7 +11,7 @@ This package is currently under active development. The core functionality is st
 
 ## Philosophy & Design
 
-Our core philosophy is that an interface is a **compile-time verifiable contract** on a **set of types**. This approach avoids the pitfalls of OOP-style inheritance in a multiple-dispatch world and embraces Julia's dynamic nature without sacrificing runtime performance. The key principles are:
+This interface system treats an interface as a **compile-time verifiable contract** on a **set of types**. The design embraces Julia's multiple dispatch paradigm while providing static verification capabilities. The key principles are:
 
 1.  **Interfaces as Multi-Type Contracts**: An interface can specify requirements across several interacting types (e.g., a container, its elements, and its index type).
 2.  **Implicit Implementation**: A set of types implements an interface simply by satisfying its requirements. No explicit `MyType <: MyInterface` is needed.
@@ -21,7 +21,7 @@ Our core philosophy is that an interface is a **compile-time verifiable contract
 
 ## A Comprehensive Example
 
-This example showcases all features of `SimpleInterfaces.jl`. We define a `ReadableCollection` interface for a container `C` that holds elements of type `E` and is indexed by keys of type `I`.
+This example demonstrates the core features of `SimpleInterfaces.jl`. We define a `ReadableCollection` interface for a container `C` that holds elements of type `E` and is indexed by keys of type `I`.
 
 ### 1. Defining the Interface
 
@@ -52,7 +52,6 @@ end
 
 ```julia
 using SimpleInterfaces
-using Test
 
 # A struct that correctly implements the interface
 struct MyCollection{T}
@@ -69,7 +68,13 @@ Base.getindex(c::MyCollection{T}, i::Int)::T where {T} = c.data[i]
 ---
 ## Interface Inheritance & Composition: The `@impls` Macro
 
-A powerful feature of `SimpleInterfaces.jl` is the ability to compose new interfaces from existing ones. Our design for this is explicit and unambiguous, using an `@impls` macro inside an interface definition. This approach avoids the semantic confusion that could arise from mimicking Julia's type inheritance (`<:`), clearly separating the concept of a "compile-time contract" from "type hierarchy."
+Interface composition allows building complex interfaces from simpler ones. The design uses explicit `@impls` declarations within interface definitions, which provides clear semantics and avoids confusion with Julia's type inheritance system.
+
+### Design Rationale
+
+Why not use `<:` syntax for composition? Because composition represents a different semantic relationship. When we write `@interface CanFooBar I, J, K begin ... end`, the types `I, J, K` are the **type composition** that implements the interface, not the interface itself being parameterized. Using `<:` would suggest that `CanFooBar{I, J, K}` is an instance of some parent interface, which is semantically incorrect—the composition `(I, J, K)` itself is what implements `CanFooBar`.
+
+The `@impls` syntax maintains consistency with how we list different forms of requirements within an interface body, making the inheritance relationship explicit and unambiguous.
 
 ### Defining a Composite Interface
 
@@ -84,34 +89,33 @@ end
 end
 ```
 
-We can define a new interface, `CanFooBar`, that requires a type to satisfy both.
+We can define a new interface, `CanFooBar`, that requires a type composition to satisfy both:
 ```julia
 @interface CanFooBar I, J, K begin
-    # This says: "The first two parameters (I, J) of CanFooBar
+    # This says: "The first two type variables (I, J) of CanFooBar
     # must implement CanFoo."
     @impls I, J CanFoo
 
-    # This says: "The third parameter (K) of CanFooBar
-    # must implement CanBar."
+    # This says: "The first type variable (I) of CanFooBar must implement CanBar."
     @impls I CanBar
 
     # CanFooBar can also add its own requirements.
     function baz(::I, ::K)::Int end
 end
 ```
-The `@impls` macro maps the parameters of the child interface to the required parent interface. The mapping is positional: `I` maps to `CanFoo`'s `X`, and `J` maps to `Y`.
+The `@impls` macro maps the type variables of the child interface to the required parent interface. The mapping is positional: `I` maps to `CanFoo`'s `X`, and `J` maps to `Y`.
 
-You can also map type constants:
+You can also map concrete types:
 ```julia
 @interface CanFooWithInt J begin
-    # This requires that J and the concrete type `Int` implement `CanFoo`.
+    # This requires that the type composition (J, Int) implements `CanFoo`.
     @impls J, Int CanFoo
 end
 ```
 
 ### Checking a Composite Interface
 
-Checking an implementation is straightforward. The following will recursively check all requirements from `CanFoo` and `CanBar`, plus the new requirements from `CanFooBar` itself.
+Checking an implementation recursively verifies all requirements from parent interfaces plus the new requirements from the child interface itself:
 ```julia
 @assertimpls MyType, YourType, TheirType CanFooBar
 ```
@@ -129,13 +133,13 @@ However, for an interface contract, this behavior is often the reverse of what a
 
 This library correctly enforces the user's expectation. If you require a method signature, the implementation must match it or be more general (e.g., implement for `Any` when `Integer` is required).
 
-So, how do you specify "this interface works for any index that is a subtype of `Integer`"? The answer is to make the index type an explicit parameter of the interface, as we did with `I<:Integer`. By passing the concrete type (`Int`) to `@assertimpls`, you are checking for that specific case.
+So, how do you specify "this interface works for any index that is a subtype of `Integer`"? The answer is to make the index type an explicit type variable of the interface, as we did with `I<:Integer`. By passing the concrete type (`Int`) to `@assertimpls`, you are checking for that specific case.
 
 Attempting to automatically "solve" for any possible subtype `I` is not practical:
 1.  **Practicality**: It would violate the principle of least surprise, as the library would have to guess which subtypes the user cares about.
 2.  **Computability**: It would require solving complex type equations at compile time, which may not even be decidable.
 
-**Conclusion**: For flexibility in a parameter, make it an explicit type parameter of the interface.
+**Conclusion**: For flexibility in a type variable, make it an explicit type variable of the interface.
 
 ---
 ## DSL Syntax Specification
@@ -143,26 +147,32 @@ Attempting to automatically "solve" for any possible subtype `I` is not practica
 The body of an `@interface` macro supports the following requirement definitions:
 
 ```julia
-@interface InterfaceName TypeDeclarations... begin
-    # Composition of other interfaces
-    @impls TypeParams... ParentInterfaceName
-
-    # Field and method requirements
-    fieldDeclarations
-    methodDeclarations
+@interface InterfaceName TypeComposition begin
+    requirements...
 end
 ```
 where:
 - `InterfaceName` is the name of the interface, a valid Julia identifier.
-- `TypeDeclarations := TypeName [<: SuperType]`
-  - `TypeName` is a valid Julia type name.
-  - `SuperType` is an optional valid supertype that the type must inherit from.
-- `fieldDeclarations` can be several of the following:
-  - `TypeName.fieldName[::FieldType]` to specify a field with a type. where:
-    - `TypeName` is a type declared in `TypeDeclarations`.
-    - `fieldName` is a valid Julia identifier.
-    - `FieldType`(Optional) either a valid Julia type or a type parameter declared in `TypeDeclarations`. **If `FieldType` is omitted, it defaults to `Any`.**
-- `methodDeclarations` can be several valid Julia method definition that start with `function` and has no body. **Keyword arguments** in method signatures are checked for existence by name, but not by type, consistent with `hasmethod`. **If a parameter type is omitted, it defaults to `Any`.**
+- `TypeComposition` is a single `TypeVariable` or a tuple of `TypeVariable`, indicating the type composition to implement the interface.
+  - `TypeVariable := T[<: SuperType]` where `T` is a valid Julia name and `SuperType` is an optional valid supertype that the type must inherit from. `T` serves as a binding name that can be used as a type variable in the interface body (the block between `begin` and `end`).
+- `requirements` can be several of the following:
+  - `T.fieldName[::FieldType]` to specify type `T` must have a field `fieldName` of type `FieldType`.
+    - `T` is a type variable declared in `TypeComposition`.
+    - `fieldName` is a valid Julia identifier, the name of the field.
+    - `FieldType`(Optional) either a valid Julia type or a type variable declared in `TypeComposition`. **If `FieldType` is omitted, it defaults to `Any`.**
+  - `function [modulename.]name(args...[; kwargs...])[::ReturnType] end` to specify a method must be implemented for the type composition given by its signature.
+    - `modulename`(Optional) is a valid Julia module name.
+    - `name` is a valid Julia identifier, the name of the function.
+    - `args` in either one of the following forms:
+      - `argname::TypeName` to specify a positional argument `argname` of type `TypeName`. `TypeName` can be either a valid Julia type or a type variable declared in `TypeComposition`.
+      - `::TypeName` to specify a positional argument of type `TypeName`.
+      - `argname` to specify a positional argument of type `Any`.
+    - `kwargs`(Optional) in either one of the following forms:
+      - `argname[::TypeName][=default]` to specify a keyword argument `argname` of type `TypeName` with a default value `default`. `TypeName` and `default` do not take effect up to Julia 1.11.
+    - `ReturnType`(Optional) either a valid Julia type or a type variable declared in `TypeComposition`. **If `ReturnType` is omitted, it defaults to `Any`.**
+  - `@impls TypeComposition ParentInterfaceName` to specify that the type composition must implement the interface `ParentInterfaceName`.
+    - `TypeComposition` is a tuple of concrete types or type variables declared in the interface's `TypeComposition`.
+    - `ParentInterfaceName` is the name of the interface to implement.
 
 ---
 ## Keyword Arguments: A Note on Dispatch
@@ -178,16 +188,5 @@ For example, if an interface requires `f(x; mandatory_kw)`, an implementation `f
 **Recommendation**: Due to this inherent limitation in Julia's dispatch system, we advise against using keyword arguments for critical type contracts. For strict type enforcement, prefer positional arguments.
 
 ---
-## Runtime Utilities and Abstract Types
-
-To bridge the gap between compile-time checks and runtime polymorphism, `SimpleInterfaces.jl` will provide:
-
-1.  **Abstract Supertype**: A new abstract type, `abstract type SimpleInterface end`, is available and exported.
-2.  **Generated Interface Types**: For each `@interface Foo T`, a corresponding `abstract type Foo{T} <: SimpleInterface end` is automatically generated and can be used for dispatch.
-3.  **Runtime Check Function**: A function `impls(MyType, :MyInterface)` is available for dynamic, runtime verification. *Note: This will have a runtime cost.*
-
-These features will allow for more idiomatic Julia dispatch patterns, e.g., `function my_func(obj::MyInterface)`.
-
----
 ## A Note on Return Type Inference
-Julia's `Base.return_types` does not always infer the narrowest possible type. If youencounter a false-negative on a return type check, please ensure your implementation of the function has an **explicit return type annotation** (e.g., `function my_func(...)::Int`). This greatly helps the type inference system and ensures your contracts are checked correctly.    
+Julia's `Base.return_types` does not always infer the narrowest possible type. If you encounter a false-negative on a return type check, please ensure your implementation of the function has an **explicit return type annotation** (e.g., `function my_func(...)::Int`). This greatly helps the type inference system and ensures your contracts are checked correctly.    
