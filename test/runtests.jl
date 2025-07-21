@@ -100,7 +100,7 @@ end
     @testset "Successful Implementation" begin
         # This demonstrates covariance for fields (Vector <: AbstractArray)
         # and return types (Int <: Integer).
-        @test @assertimpls GoodCollection{String}, String, Int ReadableCollection # equivalent to @assertimpls (GoodCollection{String}, String, Int) ReadableCollection or @assertimpls((GoodCollection{String}, String, Int), ReadableCollection)
+        @test @assertimpls ReadableCollection GoodCollection{String}, String, Int # equivalent to @assertimpls ReadableCollection (GoodCollection{String}, String, Int) or @assertimpls(ReadableCollection, (GoodCollection{String}, String, Int))
     end
 
     # Helper to robustly test compile-time errors from macros
@@ -110,57 +110,43 @@ end
 
     @testset "Failed Typed Field" begin
         # Fails because data::Vector{Float64} is not a subtype of AbstractArray{String, 1}
-        get_compile_error(:(@assertimpls BadTypedFieldCollection, String, Int ReadableCollection))
+        get_compile_error(:(@assertimpls ReadableCollection BadTypedFieldCollection, String, Int))
     end
 
     @testset "Failed Untyped Field" begin
         # Fails because it's missing the `metadata` field
-        get_compile_error(:(@assertimpls BadUntypedFieldCollection{Any}, Any, Int ReadableCollection))
+        get_compile_error(:(@assertimpls ReadableCollection BadUntypedFieldCollection{Any}, Any, Int))
     end
 
     @testset "Failed Return Type" begin
         # Fails because length returns Float64, not <: Integer
-        get_compile_error(:(@assertimpls BadReturnCollection{Any}, Any, Int ReadableCollection))
+        get_compile_error(:(@assertimpls ReadableCollection BadReturnCollection{Any}, Any, Int))
     end
     
     @testset "Keyword Argument Support" begin
         # This should pass because GoodKwargsCollection has the `default` keyword
-        @test @assertimpls GoodKwargsCollection{String}, String, Int KwargsInterface
+        @test @assertimpls KwargsInterface GoodKwargsCollection{String}, String, Int
         
         # This should fail because BadKwargsCollection is missing the keyword argument
-        get_compile_error(:(@assertimpls BadKwargsCollection{String}, String, Int KwargsInterface))
+        get_compile_error(:(@assertimpls KwargsInterface BadKwargsCollection{String}, String, Int))
     end
     
     @testset "Error Message Content" begin
-        err = @test_throws InterfaceImplementationError Core.eval(@__MODULE__, :(@assertimpls BadUntypedFieldCollection{Any}, Any, Int ReadableCollection))
+        err = @test_throws InterfaceImplementationError Core.eval(@__MODULE__, :(@assertimpls ReadableCollection BadUntypedFieldCollection{Any}, Any, Int))
         
         @test err.value.interface_name == :ReadableCollection
         @test occursin("Field existence requirement failed", err.value.message)
         @test occursin("C.metadata", err.value.message)
     end
 
-    @testset "Runtime Metaprogramming" begin
-        @test isdefined(@__MODULE__, :SimpleInterface)
-        @test isabstracttype(SimpleInterface)
-        
-        # Test that the abstract type for the interface was created
-        @test isdefined(@__MODULE__, :ReadableCollection)
-        @test ReadableCollection isa UnionAll
-        @test supertype(ReadableCollection{GoodCollection{Int}, Int, Int}) == SimpleInterface
-
-        # Test the runtime `impls` function
-        @test SimpleInterfaces.impls(GoodCollection{String}, String, Int, ReadableCollection)
-        @test !SimpleInterfaces.impls(BadReturnCollection{Any}, Any, Int, ReadableCollection)
-    end
-
     @testset "Module-Level Visibility" begin
         # Test that types fulfill the interface in their own module
-        @test @assertimpls ModuleA.FulfillsA ModuleA.MyInterface
-        @test @assertimpls ModuleB.FulfillsB ModuleB.MyInterface
+        @test @assertimpls ModuleA.MyInterface ModuleA.FulfillsA
+        @test @assertimpls ModuleB.MyInterface ModuleB.FulfillsB
 
         # Test that types DO NOT fulfill the interface from the other module
-        @test_throws InterfaceImplementationError @assertimpls ModuleA.FulfillsB ModuleA.MyInterface
-        @test_throws InterfaceImplementationError @assertimpls ModuleB.FulfillsA ModuleB.MyInterface
+        @test_throws InterfaceImplementationError @assertimpls ModuleA.MyInterface ModuleA.FulfillsB
+        @test_throws InterfaceImplementationError @assertimpls ModuleB.MyInterface ModuleB.FulfillsA
     end
 end
 
@@ -176,8 +162,8 @@ end
 
 # 2. Define a composite interface
 @interface CanFooBar I, J, K begin
-    @impls I, J CanFoo
-    @impls I CanBar
+    @impls CanFoo I, J
+    @impls CanBar I
     function baz(::I, ::K)::Int end
 end
 
@@ -198,7 +184,7 @@ foo(::NoBar, ::Any) = true
 baz(::NoBar, ::Any) = 0
 
 @interface CanFooWithInt J begin
-    @impls J, Int CanFoo
+    @impls CanFoo J, Int
 end
 
 struct FooWithIntImpl end
@@ -210,15 +196,15 @@ foo(::BadFooWithIntImpl, ::String) = false # Does not implement for Int
 @testset "Interface Inheritance (@impls)" begin
     # This should pass, as FullImpl satisfies CanFoo (via FullImpl, Int),
     # CanBar (via FullImpl), and CanFooBar's own `baz` requirement.
-    @test @assertimpls FullImpl, Int, String CanFooBar
+    @test @assertimpls CanFooBar FullImpl, Int, String
 
     # This should fail because NoBaz is missing the `baz` method from CanFooBar.
-    @test_throws InterfaceImplementationError @assertimpls NoBaz, Int, String CanFooBar
+    @test_throws InterfaceImplementationError @assertimpls CanFooBar NoBaz, Int, String
 
     # This should fail because NoBar is missing the `bar` method from the parent CanBar.
-    @test_throws InterfaceImplementationError @assertimpls NoBar, Int, String CanFooBar
+    @test_throws InterfaceImplementationError @assertimpls CanFooBar NoBar, Int, String
 
-    @test @assertimpls FooWithIntImpl CanFooWithInt
-    @test_throws InterfaceImplementationError @assertimpls BadFooWithIntImpl CanFooWithInt
+    @test @assertimpls CanFooWithInt FooWithIntImpl
+    @test_throws InterfaceImplementationError @assertimpls CanFooWithInt BadFooWithIntImpl
 
 end

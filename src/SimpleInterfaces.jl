@@ -1,6 +1,6 @@
 module SimpleInterfaces
 
-export @interface, @impls, @assertimpls, InterfaceImplementationError, SimpleInterface
+export @interface, @impls, @assertimpls, InterfaceImplementationError, SimpleInterface, impls
 
 abstract type SimpleInterface end
 
@@ -113,8 +113,8 @@ function check_interface(__module__::Module, interface_key::Symbol, concrete_typ
         try
             if req.type == :compose
                 # This is an inheritance requirement, parse and check it now.
-                type_exprs = req.expr.args[2]
-                interface_expr_dep = req.expr.args[3]
+                interface_expr_dep = req.expr.args[2]
+                type_exprs = req.expr.args[3]
                 interface_type_dep = Core.eval(__module__, interface_expr_dep)
                 interface_key_dep = get_interface_key(interface_type_dep)
                 concrete_type_exprs = substitute(type_exprs)
@@ -222,7 +222,7 @@ macro interface(name_expr, params_expr, body_expr)
     end
 end
 
-macro impls(types_expr, interface_expr)
+macro impls(interface_expr, types_expr)
     # This check happens at COMPILE TIME.
     
     local concrete_type_exprs
@@ -247,7 +247,7 @@ macro impls(types_expr, interface_expr)
     end
 end
 
-macro assertimpls(types_expr, interface_expr)
+macro assertimpls(interface_expr, types_expr)
     # This check happens at COMPILE TIME.
 
     local concrete_type_exprs
@@ -276,6 +276,20 @@ macro assertimpls(types_expr, interface_expr)
     end
 
     return true
+end
+
+# Runtime implementation checking function
+function impls(interface_type, concrete_types...)
+    try
+        interface_key = get_interface_key(interface_type)
+        interface_def_module = INTERFACES[interface_key].__module__
+        concrete_types_vec = collect(concrete_types)
+        
+        failure_message = check_interface(interface_def_module, interface_key, concrete_types_vec)
+        return isnothing(failure_message)
+    catch e
+        return false
+    end
 end
 
 end # module

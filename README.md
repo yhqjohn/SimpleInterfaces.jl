@@ -66,7 +66,7 @@ Base.length(c::MyCollection)::Int = length(c.data) # Int <: Integer (Covariance)
 Base.getindex(c::MyCollection{T}, i::Int)::T where {T} = c.data[i]
 
 # This check passes because all constraints are met.
-@assertimpls MyCollection{String}, String, Int, ReadableCollection
+@assertimpls ReadableCollection MyCollection{String}, String, Int
 ```
 
 ---
@@ -98,10 +98,10 @@ We can define a new interface, `CanFooBar`, that requires a type composition to 
 @interface CanFooBar I, J, K begin
     # This says: "The first two type variables (I, J) of CanFooBar
     # must implement CanFoo."
-    @impls I, J CanFoo
+    @impls CanFoo I, J
 
     # This says: "The first type variable (I) of CanFooBar must implement CanBar."
-    @impls I CanBar
+    @impls CanBar I
 
     # CanFooBar can also add its own requirements.
     function baz(::I, ::K)::Int end
@@ -113,7 +113,7 @@ You can also map concrete types:
 ```julia
 @interface CanFooWithInt J begin
     # This requires that the type composition (J, Int) implements `CanFoo`.
-    @impls J, Int CanFoo
+    @impls CanFoo J, Int
 end
 ```
 
@@ -121,7 +121,7 @@ end
 
 Checking an implementation recursively verifies all requirements from parent interfaces plus the new requirements from the child interface itself:
 ```julia
-@assertimpls MyType, YourType, TheirType CanFooBar
+@assertimpls CanFooBar MyType, YourType, TheirType
 ```
 The system ensures that if there's a failure, the earliest error in the inheritance chain is reported, helping you pinpoint the root cause quickly.
 
@@ -174,9 +174,9 @@ where:
     - `kwargs`(Optional) in either one of the following forms:
       - `argname[::TypeName][=default]` to specify a keyword argument `argname` of type `TypeName` with a default value `default`. `TypeName` and `default` do not take effect up to Julia 1.11.
     - `ReturnType`(Optional) either a valid Julia type or a type variable declared in `TypeComposition`. **If `ReturnType` is omitted, it defaults to `Any`.**
-  - `@impls TypeComposition ParentInterfaceName` to specify that the type composition must implement the interface `ParentInterfaceName`.
-    - `TypeComposition` is a tuple of concrete types or type variables declared in the interface's `TypeComposition`.
+  - `@impls ParentInterfaceName TypeComposition` to specify that the type composition must implement the interface `ParentInterfaceName`.
     - `ParentInterfaceName` is the name of the interface to implement.
+    - `TypeComposition` is a tuple of concrete types or type variables declared in the interface's `TypeComposition`.
 
 ---
 ## Keyword Arguments: A Note on Dispatch
