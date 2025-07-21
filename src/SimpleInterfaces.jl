@@ -1,6 +1,6 @@
 module SimpleInterfaces
 
-export @interface, @impls, @assertimpls, InterfaceImplementationError, SimpleInterface, impls
+export @interface, @impls, @assertimpls, @warnimpls, InterfaceImplementationError, SimpleInterface
 
 abstract type SimpleInterface end
 
@@ -278,17 +278,45 @@ macro assertimpls(interface_expr, types_expr)
     return true
 end
 
-# Runtime implementation checking function
-function impls(interface_type, concrete_types...)
+macro warnimpls(interface_expr, types_expr)
+    # This check happens at COMPILE TIME.
+
+    local concrete_type_exprs
+    if types_expr isa Expr && types_expr.head == :tuple
+        concrete_type_exprs = types_expr.args
+    else
+        concrete_type_exprs = [types_expr] # It's a single expression
+    end
+
     try
+        interface_type = Core.eval(__module__, interface_expr)
         interface_key = get_interface_key(interface_type)
         interface_def_module = INTERFACES[interface_key].__module__
-        concrete_types_vec = collect(concrete_types)
-        
-        failure_message = check_interface(interface_def_module, interface_key, concrete_types_vec)
-        return isnothing(failure_message)
+        interface_name_for_warning = INTERFACES[interface_key].name
+        concrete_types = [Core.eval(__module__, expr) for expr in concrete_type_exprs]
+
+        failure_message = check_interface(interface_def_module, interface_key, concrete_types)
+
+        if !isnothing(failure_message)
+            # Get source location information
+            source_info = __source__
+            file_name = string(source_info.file)
+            line_number = source_info.line
+            
+            type_names = try join([string(t) for t in concrete_types], ", ") catch; string(concrete_types) end
+            warning_msg = "Interface implementation warning at $file_name:$line_number: Failed to implement interface `$interface_name_for_warning` for types `$type_names`. Reason: $failure_message"
+            
+            return quote
+                @warn $warning_msg
+                false
+            end
+        else
+            return true
+        end
     catch e
-        return false
+        # For user errors (like UndefVarError), rethrow them after a warning.
+        @warn "SimpleInterfaces.jl: A compile-time check in `@warnimpls` failed. This is likely due to a user error (e.g., a typo or undefined type). See the original error below."
+        rethrow(e)
     end
 end
 

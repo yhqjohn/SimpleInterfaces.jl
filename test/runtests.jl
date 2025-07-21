@@ -148,6 +148,15 @@ end
         @test_throws InterfaceImplementationError @assertimpls ModuleA.MyInterface ModuleA.FulfillsB
         @test_throws InterfaceImplementationError @assertimpls ModuleB.MyInterface ModuleB.FulfillsA
     end
+
+    @testset "@warnimpls Macro" begin
+        # Test successful implementation returns true without warning
+        @test @warnimpls ReadableCollection GoodCollection{String}, String, Int
+
+        # Test failed implementation returns false and emits warning
+        result = @test_logs (:warn, r"Interface implementation warning.*ReadableCollection.*BadTypedFieldCollection") @warnimpls ReadableCollection BadTypedFieldCollection, String, Int
+        @test result == false
+    end
 end
 
 
@@ -206,5 +215,10 @@ foo(::BadFooWithIntImpl, ::String) = false # Does not implement for Int
 
     @test @assertimpls CanFooWithInt FooWithIntImpl
     @test_throws InterfaceImplementationError @assertimpls CanFooWithInt BadFooWithIntImpl
+
+    # Test @warnimpls with inheritance
+    @test @warnimpls CanFooBar FullImpl, Int, String
+    result = @test_logs (:warn, r"Interface implementation warning.*CanFooBar.*NoBaz") @warnimpls CanFooBar NoBaz, Int, String
+    @test result == false
 
 end

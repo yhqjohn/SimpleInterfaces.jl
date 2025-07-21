@@ -9,7 +9,7 @@ This package is currently under active development. The core functionality is st
 
 ### Future Plans
 
-**Interface Implementation Methods**: We plan to add support for built-in method/function templates within interface definitions. These templates would provide default implementations for type compositions that implement the interface. When `@impls` or `@assertimpls` is called at module top-level, these template methods would be automatically instantiated for the specific type composition, reducing boilerplate code and ensuring consistent implementations across different types.
+**Interface Implementation Methods**: We plan to add support for built-in method/function templates within interface definitions. These templates would provide default implementations for type compositions that implement the interface. When `@impls`, `@assertimpls`, or `@warnimpls` is called at module top-level, these template methods would be automatically instantiated for the specific type composition, reducing boilerplate code and ensuring consistent implementations across different types.
 
 ---
 
@@ -67,6 +67,9 @@ Base.getindex(c::MyCollection{T}, i::Int)::T where {T} = c.data[i]
 
 # This check passes because all constraints are met.
 @assertimpls ReadableCollection MyCollection{String}, String, Int
+
+# Alternative: warn but don't throw an error if constraints fail
+@warnimpls ReadableCollection MyCollection{String}, String, Int
 ```
 
 ---
@@ -124,6 +127,36 @@ Checking an implementation recursively verifies all requirements from parent int
 @assertimpls CanFooBar MyType, YourType, TheirType
 ```
 The system ensures that if there's a failure, the earliest error in the inheritance chain is reported, helping you pinpoint the root cause quickly.
+
+---
+
+## Interface Verification Macros
+
+SimpleInterfaces.jl provides three macros for interface verification, each with different behavior when constraints are not met:
+
+### `@impls`
+Returns a boolean value indicating whether the type composition implements the interface. This is useful for conditional logic:
+```julia
+if @impls ReadableCollection MyCollection{String}, String, Int
+    println("MyCollection implements ReadableCollection")
+end
+```
+
+### `@assertimpls` 
+Throws an `InterfaceImplementationError` if the type composition does not implement the interface. This is useful for enforcing strict contracts:
+```julia
+@assertimpls ReadableCollection MyCollection{String}, String, Int
+# Throws error if not implemented
+```
+
+### `@warnimpls`
+Emits a compile-time warning if the type composition does not implement the interface, but continues execution. Returns a boolean like `@impls`. This is useful during development or for non-critical interface checks:
+```julia
+result = @warnimpls ReadableCollection MyCollection{String}, String, Int
+# Warns if not implemented but doesn't throw an error
+```
+
+All three macros perform the same compile-time verification. The difference lies only in how they handle failures.
 
 ---
 
