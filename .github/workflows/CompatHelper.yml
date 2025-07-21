@@ -41,4 +41,4 @@ jobs:
         shell: julia --color=yes {0}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          
+          ssh: ${{ secrets.REPO_PRIVATE_KEY }}
