@@ -222,7 +222,8 @@ For example, if an interface requires `f(x; mandatory_kw)`, an implementation `f
 
 ---
 ## A Note on Return Type Inference
-Julia's `Base.return_types` does not always infer the narrowest possible type. If you encounter a false-negative on a return type check, please ensure your implementation of the function has an **explicit return type annotation** (e.g., `function my_func(...)::Int`). This greatly helps the type inference system and ensures your contracts are checked correctly.    
+Julia's `Base.return_types` does not always infer the narrowest possible type. If you encounter a false-negative on a return type check, please ensure your implementation of the function has an **explicit return type annotation** (e.g., `function my_func(...)::Int`). This greatly helps the type inference system and ensures your contracts are checked correctly. 
+   
 ---
 ## Detailed Development Plan: The Recommended API
 
